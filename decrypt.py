@@ -1,74 +1,56 @@
 import os
 import re
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from binascii import hexlify, unhexlify
 import ujson
 from datetime import datetime
 
-Executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="T")
-cache_file_index_path = Path("cache_index.json")
-
-
-def ensure_cache_file_index():
-    if not cache_file_index_path.exists():
-        with cache_file_index_path.open("w", encoding="utf-8") as f:
-            ujson.dump({}, f)
-
-
-ensure_cache_file_index()
-
-with cache_file_index_path.open("r", encoding="utf-8") as f:
-    cache_file_index = ujson.load(f)
+Executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="DecryptThread")
 
 
 def find_next_unityFS_index(file_data: bytes):
     openFileHex = hexlify(file_data)
-    unityFX_len = len(re.findall(b"556e6974794653000000000", openFileHex))
-    if unityFX_len < 2:
+    unityFS_len = len(re.findall(b"556e6974794653000000000", openFileHex))
+    if unityFS_len < 2:
         return -1
     else:
         find_index = len(re.search(b".+556e6974794653000000000", openFileHex).group()) - 23
         return len(unhexlify(openFileHex[:find_index]))
 
 
-def decrypt_file(file_path: Path):
+def decrypt_file(file_path: Path, log_callback):
     with file_path.open("rb") as f:
         data = f.read()
 
     header_len = find_next_unityFS_index(data)
     if header_len == -1:
+        log_callback(f"文件 {file_path.name} 不包含有效的 UnityFS 头，跳过解密。\n")
         return file_path.name, header_len
 
     with file_path.open("wb") as f:
         f.write(data[header_len:])
 
+    log_callback(f"文件 {file_path.name} 解密成功。\n")
     return file_path.name, header_len
 
 
-def decrypt(game_bundles_path: Path, progress_callback=None):
+def decrypt(game_bundles_path: Path, log_callback=None):
     if not game_bundles_path.exists():
         raise FileNotFoundError("游戏bundles目录不存在")
 
-    file_list_len = len(os.listdir(game_bundles_path))
-
-    # 使用 progress_callback 更新进度
-    if progress_callback:
-        progress_callback(0, file_list_len)
+    log_callback(f"开始解密 {game_bundles_path} 目录中的文件...\n")
 
     futures = []
+    decrypt_result = {}
 
     for AssetFile in game_bundles_path.iterdir():
-        futures.append(Executor.submit(decrypt_file, AssetFile))
+        futures.append(Executor.submit(decrypt_file, AssetFile, log_callback))
 
-    decrypt_result = {}
-    for i, future in enumerate(as_completed(futures)):
+    for future in as_completed(futures):
         file_name, header_len = future.result()
         if header_len != -1:
             decrypt_result[file_name] = header_len
-        if progress_callback:
-            progress_callback(i + 1, file_list_len)
 
     # 创建 index_cache 文件夹和 index_cache_日期.json 文件
     date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -80,4 +62,4 @@ def decrypt(game_bundles_path: Path, progress_callback=None):
     with cache_file_path.open("w", encoding="utf-8") as f:
         ujson.dump(decrypt_result, f)
 
-    print("全部完成")
+    log_callback(f"解密操作完成。索引已保存到 {cache_file_path}\n")
