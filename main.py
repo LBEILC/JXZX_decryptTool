@@ -11,9 +11,11 @@ from ttkbootstrap import Style
 
 CONFIG_FILE = 'app_config.json'
 
+
 def save_theme(theme_name):
     with open(CONFIG_FILE, 'w') as f:
         json.dump({'theme': theme_name}, f)
+
 
 def load_theme():
     try:
@@ -22,6 +24,7 @@ def load_theme():
             return config.get('theme', 'minty')  # 默认返回 'minty'
     except FileNotFoundError:
         return 'minty'  # 配置文件不存在时返回默认主题
+
 
 class App:
     def __init__(self, root):
@@ -148,7 +151,8 @@ class App:
     def change_theme(self, event):
         new_theme = self.theme_combobox.get()
         self.style.theme_use(new_theme)  # 应用新主题
-        save_theme(new_theme)   # 保存新主题到配置文件
+        save_theme(new_theme)  # 保存新主题到配置文件
+
 
 # 创建并运行应用程序
 root = tk.Tk()
