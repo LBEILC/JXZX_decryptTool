@@ -1,204 +1,59 @@
+# main.py
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
-import threading
-from pathlib import Path
-import json
-
-from decrypt import decrypt
-from encrypt import encode
-
+from tkinter import ttk
 from ttkbootstrap import Style
+from crypto_tab import CryptoTab
+from settings_tab import SettingsTab, load_config, save_config
+from image_tab import ImageTab  # 导入 ImageTab
 
-CONFIG_FILE = 'app_config.json'
-
-
-# 更新配置文件保存和加载函数
-def save_config(config):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f)
-
-
-def load_config():
-    default_config = {
-        'theme': 'minty',
-        'decrypt_path': '',
-        'encrypt_path': '',
-        'cache_file': ''
-    }
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-            return {**default_config, **config}  # 合并默认配置和已保存配置
-    except FileNotFoundError:
-        return default_config  # 配置文件不存在时返回默认配置
-
-
-class App:
+class MainApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("交错战线 Assets 加密解密工具V0.5")
-        # 设置窗口关闭事件的处理函数
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        # 读取上次使用的主题
+        self.root.title("交错战线 Assets 工具 V0.6")
+
+        # 加载配置并应用主题
         self.config = load_config()
+        self.style = Style(theme=self.config.get('theme', 'default'))
 
-        current_theme = self.config.get('theme', 'minty')
+        # 创建 Notebook
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(expand=True, fill='both')
 
-        # 配置样式
-        self.style = Style(theme=current_theme)
+        # 创建加密解密标签页
+        self.crypto_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.crypto_frame, text='加密/解密')
+        self.crypto_tab = CryptoTab(self.crypto_frame)
 
-        # 添加主题选择下拉框
-        self.theme_label = ttk.Label(root, text="主题:")
-        self.theme_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.theme_combobox = ttk.Combobox(root, values=self.style.theme_names(), state='readonly')
-        self.theme_combobox.set(current_theme)
-        self.theme_combobox.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        self.theme_combobox.bind('<<ComboboxSelected>>', self.change_theme)
+        # 创建图片处理标签页
+        self.image_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.image_frame, text='图片处理')
+        self.image_tab = ImageTab(self.image_frame)
+        self.image_tab.pack(expand=True, fill='both')
 
-        # 状态文本
-        self.status_label = ttk.Label(root, text="未开始加密或解密")
-        self.status_label.grid(row=1, column=0, columnspan=4, padx=5, pady=5)
+        # 创建设置标签页
+        self.settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_frame, text='设置')
+        self.settings_tab = SettingsTab(self.settings_frame, self.style)
 
-        # 解密文件目录输入框和按钮
-        ttk.Label(root, text="解密assets文件目录:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        self.decrypt_entry = ttk.Entry(root, width=50)
-        self.decrypt_entry.grid(row=2, column=1, padx=5, pady=5)
-        self.decrypt_select_button = ttk.Button(root, text="选择", command=self.select_decrypt_folder)
-        self.decrypt_select_button.grid(row=2, column=2, padx=5, pady=5)
-        self.decrypt_button = ttk.Button(root, text="解密", command=lambda: self.start_process(decrypt))
-        self.decrypt_button.grid(row=2, column=3, padx=5, pady=5)
+        # 设置主窗口最小大小
+        self.root.minsize(400, 300)
 
-        # 加密文件目录输入框和按钮
-        ttk.Label(root, text="加密assets文件目录:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
-        self.encrypt_entry = ttk.Entry(root, width=50)
-        self.encrypt_entry.grid(row=3, column=1, padx=5, pady=5)
-        self.encrypt_select_button = ttk.Button(root, text="选择", command=self.select_encrypt_folder)
-        self.encrypt_select_button.grid(row=3, column=2, padx=5, pady=5)
-        self.encrypt_button = ttk.Button(root, text="加密", command=lambda: self.start_process(encode))
-        self.encrypt_button.grid(row=3, column=3, padx=5, pady=5)
-
-        # 选择index_cache文件按钮和显示所选文件的标签
-        self.select_cache_button = ttk.Button(root, text="选择index_cache文件", command=self.select_cache_file)
-        self.select_cache_button.grid(row=4, column=0, padx=5, pady=5)
-        self.cache_file_label = ttk.Label(root, text="未选择index_cache文件")
-        self.cache_file_label.grid(row=4, column=1, columnspan=3, padx=5, pady=5, sticky="w")
-
-        # 设置输入框值为配置中的路径
-        self.decrypt_entry.insert(0, self.config['decrypt_path'])
-        self.encrypt_entry.insert(0, self.config['encrypt_path'])
-        if self.config['cache_file']:
-            self.cache_file_label['text'] = Path(self.config['cache_file']).name
-            self.selected_cache_file = self.config['cache_file']
-
-        # 日志文件标签和多行文本框
-        ttk.Label(root, text="日志文件").grid(row=5, column=0, padx=5, pady=5, sticky="w")
-        self.log_text = scrolledtext.ScrolledText(root, height=10, width=80)
-        self.log_text.grid(row=6, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
-
-        # 配置行和列的权重，使得文本框能够随窗口大小变化而拉伸
-        root.grid_rowconfigure(6, weight=1)
-        root.grid_columnconfigure(1, weight=1)
-
-        # 存储用户选择的index_cache文件路径
-        self.selected_cache_file = None
-
-    def save_decrypt_path(self, event=None):
-        decrypt_path = self.decrypt_entry.get()
-        self.config['decrypt_path'] = decrypt_path
-        save_config(self.config)
-
-    def save_encrypt_path(self, event=None):
-        encrypt_path = self.encrypt_entry.get()
-        self.config['encrypt_path'] = encrypt_path
-        save_config(self.config)
+        # 设置关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_close(self):
-        # 在关闭窗口前保存配置
-        self.save_decrypt_path()
-        self.save_encrypt_path()
+        # 获取当前配置并保存
+        config = {
+            'decrypt_path': self.crypto_tab.decrypt_entry.get(),
+            'encrypt_path': self.crypto_tab.encrypt_entry.get(),
+            'cache_file': self.crypto_tab.config.get('cache_file'),  # 从 CryptoTab 的配置中获取
+            'theme': self.settings_tab.config['theme']
+        }
+        save_config(config)
         self.root.destroy()
-
-    def select_decrypt_folder(self):
-        directory = filedialog.askdirectory()
-        if directory:
-            self.decrypt_entry.delete(0, tk.END)
-            self.decrypt_entry.insert(0, directory)
-            # 保存解密目录到配置文件
-            self.config['decrypt_path'] = directory
-            save_config(self.config)
-
-    def select_encrypt_folder(self):
-        directory = filedialog.askdirectory()
-        if directory:
-            self.encrypt_entry.delete(0, tk.END)
-            self.encrypt_entry.insert(0, directory)
-            # 保存加密目录到配置文件
-            self.config['encrypt_path'] = directory
-            save_config(self.config)
-
-    def start_process(self, process_func):
-        directory = self.decrypt_entry.get() if process_func == decrypt else self.encrypt_entry.get()
-        if not directory:
-            messagebox.showwarning("警告", "请选择一个有效的目录")
-            return
-        if process_func == encode and not self.selected_cache_file:
-            messagebox.showwarning("警告", "请先选择一个index_cache文件")
-            return
-        self.disable_buttons(process_func)
-        threading.Thread(target=self.run_process, args=(process_func, directory), daemon=True).start()
-
-    def select_cache_file(self):
-        file_path = filedialog.askopenfilename(initialdir="index_cache", title="选择index_cache文件",
-                                               filetypes=[("JSON files", "*.json")])
-        if file_path:
-            self.selected_cache_file = file_path
-            self.cache_file_label['text'] = Path(file_path).name  # 显示所选文件的名称
-            # 保存index_cache文件路径到配置文件
-            self.config['cache_file'] = file_path
-            save_config(self.config)
-
-    def run_process(self, process_func, directory):
-        try:
-            path = Path(directory)
-            if process_func == encode:
-                process_func(path, self.selected_cache_file, self.log)
-            elif process_func == decrypt:
-                process_func(path, self.log)
-            self.status_label['text'] = '完成'
-            self.log("操作完成\n")
-        except Exception as e:
-            messagebox.showerror("错误", str(e))
-            self.log(f"错误: {e}\n")
-        finally:
-            self.enable_buttons(process_func)
-
-    def log(self, message):
-        self.log_text.insert(tk.END, message)  # 在多行文本框的末尾插入日志信息
-        self.log_text.see(tk.END)  # 自动滚动到多行文本框的末尾
-
-    def disable_buttons(self, process_func):
-        self.decrypt_button['state'] = 'disabled'
-        self.encrypt_button['state'] = 'disabled'
-        self.select_cache_button['state'] = 'disabled'
-        action_text = '加密' if process_func == encode else '解密'
-        self.status_label['text'] = f'正在{action_text}...'
-
-    def enable_buttons(self, process_func):
-        self.decrypt_button['state'] = 'normal'
-        self.encrypt_button['state'] = 'normal'
-        self.select_cache_button['state'] = 'normal'
-        action_text = '加密' if process_func == encode else '解密'
-        self.status_label['text'] = f'{action_text}完成'
-
-    def change_theme(self, event):
-        new_theme = self.theme_combobox.get()
-        self.style.theme_use(new_theme)  # 应用新主题
-        # 更新配置并保存
-        self.config['theme'] = new_theme
-        save_config(self.config)
 
 
 # 创建并运行应用程序
 root = tk.Tk()
-app = App(root)
+app = MainApp(root)
 root.mainloop()
