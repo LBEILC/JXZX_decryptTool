@@ -36,7 +36,7 @@ def load_config():
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("交错战线 Assets 加密解密工具V0.4")
+        self.root.title("交错战线 Assets 加密解密工具V0.5")
         # 设置窗口关闭事件的处理函数
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         # 读取上次使用的主题
