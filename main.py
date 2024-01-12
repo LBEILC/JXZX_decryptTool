@@ -12,27 +12,37 @@ from ttkbootstrap import Style
 CONFIG_FILE = 'app_config.json'
 
 
-def save_theme(theme_name):
+# 更新配置文件保存和加载函数
+def save_config(config):
     with open(CONFIG_FILE, 'w') as f:
-        json.dump({'theme': theme_name}, f)
+        json.dump(config, f)
 
 
-def load_theme():
+def load_config():
+    default_config = {
+        'theme': 'minty',
+        'decrypt_path': '',
+        'encrypt_path': '',
+        'cache_file': ''
+    }
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-            return config.get('theme', 'minty')  # 默认返回 'minty'
+            return {**default_config, **config}  # 合并默认配置和已保存配置
     except FileNotFoundError:
-        return 'minty'  # 配置文件不存在时返回默认主题
+        return default_config  # 配置文件不存在时返回默认配置
 
 
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title("交错战线 Assets 加密解密工具V0.4")
-
+        # 设置窗口关闭事件的处理函数
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         # 读取上次使用的主题
-        current_theme = load_theme()
+        self.config = load_config()
+
+        current_theme = self.config.get('theme', 'minty')
 
         # 配置样式
         self.style = Style(theme=current_theme)
@@ -73,6 +83,13 @@ class App:
         self.cache_file_label = ttk.Label(root, text="未选择index_cache文件")
         self.cache_file_label.grid(row=4, column=1, columnspan=3, padx=5, pady=5, sticky="w")
 
+        # 设置输入框值为配置中的路径
+        self.decrypt_entry.insert(0, self.config['decrypt_path'])
+        self.encrypt_entry.insert(0, self.config['encrypt_path'])
+        if self.config['cache_file']:
+            self.cache_file_label['text'] = Path(self.config['cache_file']).name
+            self.selected_cache_file = self.config['cache_file']
+
         # 日志文件标签和多行文本框
         ttk.Label(root, text="日志文件").grid(row=5, column=0, padx=5, pady=5, sticky="w")
         self.log_text = scrolledtext.ScrolledText(root, height=10, width=80)
@@ -85,17 +102,39 @@ class App:
         # 存储用户选择的index_cache文件路径
         self.selected_cache_file = None
 
+    def save_decrypt_path(self, event=None):
+        decrypt_path = self.decrypt_entry.get()
+        self.config['decrypt_path'] = decrypt_path
+        save_config(self.config)
+
+    def save_encrypt_path(self, event=None):
+        encrypt_path = self.encrypt_entry.get()
+        self.config['encrypt_path'] = encrypt_path
+        save_config(self.config)
+
+    def on_close(self):
+        # 在关闭窗口前保存配置
+        self.save_decrypt_path()
+        self.save_encrypt_path()
+        self.root.destroy()
+
     def select_decrypt_folder(self):
         directory = filedialog.askdirectory()
         if directory:
             self.decrypt_entry.delete(0, tk.END)
             self.decrypt_entry.insert(0, directory)
+            # 保存解密目录到配置文件
+            self.config['decrypt_path'] = directory
+            save_config(self.config)
 
     def select_encrypt_folder(self):
         directory = filedialog.askdirectory()
         if directory:
             self.encrypt_entry.delete(0, tk.END)
             self.encrypt_entry.insert(0, directory)
+            # 保存加密目录到配置文件
+            self.config['encrypt_path'] = directory
+            save_config(self.config)
 
     def start_process(self, process_func):
         directory = self.decrypt_entry.get() if process_func == decrypt else self.encrypt_entry.get()
@@ -114,6 +153,9 @@ class App:
         if file_path:
             self.selected_cache_file = file_path
             self.cache_file_label['text'] = Path(file_path).name  # 显示所选文件的名称
+            # 保存index_cache文件路径到配置文件
+            self.config['cache_file'] = file_path
+            save_config(self.config)
 
     def run_process(self, process_func, directory):
         try:
@@ -151,7 +193,9 @@ class App:
     def change_theme(self, event):
         new_theme = self.theme_combobox.get()
         self.style.theme_use(new_theme)  # 应用新主题
-        save_theme(new_theme)  # 保存新主题到配置文件
+        # 更新配置并保存
+        self.config['theme'] = new_theme
+        save_config(self.config)
 
 
 # 创建并运行应用程序
