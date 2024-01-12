@@ -1,6 +1,6 @@
 # image_tab.py
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import ttk, filedialog, scrolledtext
 from PIL import Image
 import numpy as np
 import os
